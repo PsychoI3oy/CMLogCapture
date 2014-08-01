@@ -1,8 +1,12 @@
 package org.cyanogenmod.cmlogcapture;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
@@ -38,7 +42,7 @@ public class CMLogService extends IntentService {
 
 
     private JSONObject inputJSON = new JSONObject();
-    private JSONObject outputJSON;    
+    private JSONObject outputJSON;
 
     private int notifID = 546924;
 
@@ -155,13 +159,14 @@ public class CMLogService extends IntentService {
             if(!jiraBugID.isEmpty()){
                 try {
                     URI url2 = new URI(apiURL + jiraBugID + "/attachments");
-                    DefaultHttpClient uplClient = new DefaultHttpClient();             
+                    DefaultHttpClient uplClient = new DefaultHttpClient();
                     HttpPost httpostUpl = new HttpPost(url2);
                     httpostUpl.setHeader("Authorization","Basic " + uNpW);
                     httpostUpl.setHeader("X-Atlassian-Token","nocheck");
                     File bugreportFile = new File("/data" + reportURI.getPath());
+                    File zippedBug = zip(bugreportFile);
                     MultipartEntity bugreportUploadEntity = new MultipartEntity();
-                    bugreportUploadEntity.addPart("file", new FileBody(bugreportFile));
+                    bugreportUploadEntity.addPart("file", new FileBody(zippedBug));
                     httpostUpl.setEntity(bugreportUploadEntity);
                     HttpResponse uplResponse = uplClient.execute(httpostUpl);
                     HttpEntity entityResponse = uplResponse.getEntity();
@@ -173,10 +178,31 @@ public class CMLogService extends IntentService {
                     notifyUploadFailed("The file failed to upload");
                 }
             } else {
-                // pop error message for bad response from server 
+                // pop error message for bad response from server
                 notifyUploadFailed("Bad response from server");
             }
             return jiraBugID; //output;
+        }
+	 private File zip(File bugreportFile) {
+            String zippedFilename = "/data/bugreports/tmp.zip";
+            try{
+                byte[] buffer = new byte[1024];
+                FileOutputStream fos = new FileOutputStream(zippedFilename);
+                ZipOutputStream zos = new ZipOutputStream(fos);
+                FileInputStream fis = new FileInputStream(bugreportFile);
+                zos.putNextEntry(new ZipEntry(bugreportFile.getName()));
+                int length;
+                while ((length = fis.read(buffer)) > 0){
+                    zos.write(buffer, 0, length);
+                }
+                zos.closeEntry();
+                fis.close();
+                zos.close();
+            }catch (Exception e){
+                Log.e("CMLogCapture", "Zipping problem", e);
+                notifyUploadFailed("The file failed to compress");
+            }
+            return new File(zippedFilename);
         }
         protected void onPostExecute(String result){
                 stopForeground(true);
